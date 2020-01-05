@@ -79,6 +79,8 @@ func (c *controller) handleEvent(event *eventstore.Event) error {
 			return err
 		}
 
+	} else {
+		log.Println("Soil value is above threshold, not watering")
 	}
 	return nil
 }
