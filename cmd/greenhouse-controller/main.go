@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -13,8 +12,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/lulf/teig-api/pkg/api"
-	"github.com/lulf/teig-greenhouse-controller/pkg/commandcontrol"
+	"github.com/lulf/greenhouse-controller/pkg/commandcontrol"
+	"github.com/lulf/greenhouse-controller/pkg/controller"
+	"github.com/lulf/greenhouse-controller/pkg/eventstore"
 )
 
 func main() {
@@ -25,16 +25,16 @@ func main() {
 	var tlsEnabled bool
 	var cafile string
 	var window int64
-	var lowestSoilThreshold int
+	var lowestSoilThreshold float64
 
-	flag.StringVar(&eventstoreAddr, "a", "amqp://127.0.0.1:5672", "Address of AMQP event store")
+	flag.StringVar(&eventstoreAddr, "a", "127.0.0.1:5672", "Address of AMQP event store")
 	flag.StringVar(&controlAddr, "e", "messaging.bosch-iot-hub.com:5671", "Address of Eclipse Hono Command and Control endpoint")
 	flag.StringVar(&tenantId, "t", "", "Tenant ID for Bosch IoT Hub")
 	flag.StringVar(&password, "p", "", "Password for Bosch IoT Hub")
 	flag.BoolVar(&tlsEnabled, "s", false, "Enable TLS")
 	flag.StringVar(&cafile, "c", "", "Certificate CA file")
 	flag.Int64Var(&window, "w", 172800, "Window of data to take into account")
-	flag.IntVar(&lowestSoilThreshold, "l", 900, "Lowest soil value before watering")
+	flag.Float64Var(&lowestSoilThreshold, "l", 0.0, "Lowest soil value before watering")
 
 	flag.Usage = func() {
 		fmt.Printf("Usage of %s:\n", os.Args[0])
@@ -60,56 +60,17 @@ func main() {
 	}
 	defer cc.Close()
 
-	eventCache := api.NewEventCache(eventstoreAddr, window)
-
-	err = eventCache.Connect("events", 0)
+	store := eventstore.NewEventStore(eventstoreAddr)
+	err = store.Connect("events")
 	if err != nil {
 		log.Fatal("Connecting to event store:", err)
 	}
+	defer store.Close()
+
+	controller := controller.NewController(store, cc, 1800*time.Second, lowestSoilThreshold, tenantId)
 
 	done := make(chan error)
-	go eventCache.Run(done)
-	// Controller logic
-	go func() {
-		now := time.Now().UTC().Unix()
-		since := now - window
-		events, err := eventCache.ListEvents("", 0, since)
-		if err != nil {
-			log.Println("Error listing events:", err)
-		} else {
-			lastEvents := make(map[string]api.Event, 0)
-			for _, event := range events {
-				if last, ok := lastEvents[event.DeviceId]; ok {
-					if last.CreationTime < event.CreationTime {
-						lastEvents[event.DeviceId] = event
-					}
-				} else {
-					lastEvents[event.DeviceId] = event
-				}
-			}
-
-			log.Println("Last event", lastEvents)
-			// TODO: More advanced logic :)
-			for id, event := range lastEvents {
-				isBelow := false
-				for _, value := range event.Data["soil"].([]int) {
-					if value < lowestSoilThreshold {
-						isBelow = true
-					}
-				}
-
-				// Water if any plant is below threshold
-				if isBelow {
-					err = cc.Send(context.TODO(), tenantId, id, "water", nil)
-					if err != nil {
-						log.Println("Sending message to device", id, err)
-					}
-				}
-			}
-		}
-
-		time.Sleep(1800 * time.Second)
-	}()
+	go controller.Run(done)
 
 	// Exit if any of our processes complete
 	for {
