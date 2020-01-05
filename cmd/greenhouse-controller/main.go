@@ -27,7 +27,7 @@ func main() {
 	var window int64
 	var lowestSoilThreshold float64
 
-	flag.StringVar(&eventstoreAddr, "a", "127.0.0.1:5672", "Address of AMQP event store")
+	flag.StringVar(&eventstoreAddr, "a", "amqp://127.0.0.1:5672", "Address of AMQP event store")
 	flag.StringVar(&controlAddr, "e", "messaging.bosch-iot-hub.com:5671", "Address of Eclipse Hono Command and Control endpoint")
 	flag.StringVar(&tenantId, "t", "", "Tenant ID for Bosch IoT Hub")
 	flag.StringVar(&password, "p", "", "Password for Bosch IoT Hub")
