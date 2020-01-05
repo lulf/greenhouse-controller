@@ -1,5 +1,5 @@
 FROM fedora-minimal:latest
 
-ADD build/plant-controller /
+ADD build/greenhouse-controller /
 
-ENTRYPOINT ["/plant-controller"]
+ENTRYPOINT ["/greenhouse-controller"]
