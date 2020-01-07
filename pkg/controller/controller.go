@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"math"
 	"time"
 
 	"github.com/lulf/greenhouse-controller/pkg/commandcontrol"
@@ -21,6 +22,7 @@ type controller struct {
 	cc                  *commandcontrol.CommandControl
 	lowestSoilThreshold float64
 	tenantId            string
+	lastValue           map[string]float64
 
 	waitPeriod time.Duration
 }
@@ -32,55 +34,67 @@ func NewController(store *eventstore.EventStore, cc *commandcontrol.CommandContr
 		lowestSoilThreshold: lowestSoilThreshold,
 		tenantId:            tenantId,
 		waitPeriod:          waitPeriod,
+		lastValue:           make(map[string]float64),
 	}
 }
 
 func (c *controller) Run(done chan error) {
+	go c.checkValues(done)
 	for {
 		if eventCtx, err := c.store.Receive(context.TODO()); err == nil {
-			err := c.handleEvent(eventCtx.Event)
-			if err != nil {
-				if err == io.EOF || err == amqp.ErrLinkClosed || err == amqp.ErrSessionClosed {
-					log.Println("Receive error:", err)
-					done <- err
-					break
-				} else {
-					log.Println("Error processing event", eventCtx.Event, err)
-					eventCtx.Reject(nil)
-				}
-			} else {
-				eventCtx.Accept()
-			}
+			c.handleEvent(eventCtx.Event)
+			eventCtx.Accept()
 		} else {
-			log.Println("Receive error:", err)
-			done <- err
-			break
+			if err == io.EOF || err == amqp.ErrLinkClosed || err == amqp.ErrSessionClosed {
+				log.Println("Receive error:", err)
+				done <- err
+				break
+			} else {
+				log.Println("Error processing event", eventCtx.Event, err)
+				eventCtx.Reject(nil)
+			}
 		}
-		time.Sleep(c.waitPeriod)
 	}
 }
 
-func (c *controller) handleEvent(event *eventstore.Event) error {
-	isBelow := false
+func (c *controller) handleEvent(event *eventstore.Event) {
 	if soil, ok := event.Data["soil"]; ok {
+		smallest := math.MaxFloat64
+		found := false
 		for _, value := range soil.([]interface{}) {
-			if value.(float64) < c.lowestSoilThreshold {
-				isBelow = true
+			fvalue := value.(float64)
+			if fvalue < smallest {
+				smallest = fvalue
+				found = true
 			}
 		}
-	}
-
-	// Water if any plant is below threshold
-	if isBelow {
-		log.Println("Soil value is below threshold, watering")
-		err := c.cc.Send(context.TODO(), c.tenantId, event.DeviceId, "water", nil)
-		if err != nil {
-			log.Println("Sending message to device", event.DeviceId, err)
-			return err
+		if found {
+			c.lastValue[event.DeviceId] = smallest
 		}
-
-	} else {
-		log.Println("Soil value is above threshold, not watering")
 	}
-	return nil
+}
+
+func (c *controller) checkValues(done chan error) {
+	for {
+		for deviceId, value := range c.lastValue {
+			if value < c.lowestSoilThreshold {
+				// Water if any plant is below threshold
+				log.Println("Soil value is below threshold, watering", deviceId, value)
+				err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", nil)
+				if err != nil {
+					log.Println("Sending message to device", deviceId, err)
+				}
+				if err == io.EOF || err == amqp.ErrLinkClosed || err == amqp.ErrSessionClosed {
+					log.Println("Send error:", err)
+					done <- err
+					break
+				} else {
+					log.Println("Error sending command", err)
+				}
+			} else {
+				log.Println("Soil value is above threshold, not watering", deviceId, value)
+			}
+		}
+		time.Sleep(c.waitPeriod)
+	}
 }
