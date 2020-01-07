@@ -70,6 +70,7 @@ func (c *controller) handleEvent(event *eventstore.Event) {
 		}
 		if found {
 			c.lastValue[event.DeviceId] = smallest
+			log.Println("Updated last soil value", event.DeviceId, smallest)
 		}
 	}
 }
