@@ -66,6 +66,7 @@ func (c *timeController) checkValues(done chan error) {
 	for {
 		time.Sleep(c.waitPeriod)
 		for deviceId, _ := range c.knownDevices {
+			log.Println("Watering plants", deviceId)
 			// Water if any plant is below threshold
 			err := c.waterPlants(deviceId, done)
 			if err != nil {
