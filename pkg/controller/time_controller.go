@@ -17,21 +17,21 @@ import (
 )
 
 type timeController struct {
-	store        *eventstore.EventStore
-	cc           *commandcontrol.CommandControl
-	tenantId     string
-	knownDevices map[string]bool
+	store       *eventstore.EventStore
+	cc          *commandcontrol.CommandControl
+	tenantId    string
+	lastWatered map[string]time.Time
 
 	waitPeriod time.Duration
 }
 
 func NewTimeController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, tenantId string) Controller {
 	return &timeController{
-		store:        store,
-		cc:           cc,
-		tenantId:     tenantId,
-		waitPeriod:   waitPeriod,
-		knownDevices: make(map[string]bool),
+		store:       store,
+		cc:          cc,
+		tenantId:    tenantId,
+		waitPeriod:  waitPeriod,
+		lastWatered: make(map[string]time.Time),
 	}
 }
 
@@ -56,31 +56,40 @@ func (c *timeController) Run(done chan error) {
 
 func (c *timeController) handleEvent(event *eventstore.Event) {
 	if _, ok := event.Data["soil"]; ok {
-		c.knownDevices[event.DeviceId] = true
-		log.Println("Discovered device with soil sensor", event.DeviceId)
+		if _, known := c.lastWatered[event.DeviceId]; !known {
+			c.lastWatered[event.DeviceId] = time.Time{}
+			log.Println("Discovered device with soil sensor", event.DeviceId)
+		}
 	}
 }
 
 func (c *timeController) checkValues(done chan error) {
 	log.Println("Starting checkValues loop")
 	for {
-		time.Sleep(c.waitPeriod)
-		for deviceId, _ := range c.knownDevices {
-			log.Println("Watering plants", deviceId)
-			// Water if any plant is below threshold
-			err := c.waterPlants(deviceId, done)
-			if err != nil {
-				return
-			}
+		now := time.Now().UTC()
+		log.Println("Checking device water schedule", now, c.lastWatered)
+		for deviceId, lastWatered := range c.lastWatered {
+			if lastWatered.Add(c.waitPeriod).Before(now) {
+				log.Println("Watering plants", deviceId)
+				// Water if any plant is below threshold
+				err := c.waterPlants(deviceId, done)
+				if err != nil {
+					return
+				}
 
-			time.Sleep(10 * time.Second)
+				time.Sleep(10 * time.Second)
 
-			// Twice
-			err = c.waterPlants(deviceId, done)
-			if err != nil {
-				return
+				// Twice
+				err = c.waterPlants(deviceId, done)
+				if err != nil {
+					return
+				}
+				c.lastWatered[deviceId] = now
+			} else {
+				log.Println("Not watering plants", deviceId)
 			}
 		}
+		time.Sleep(120 * time.Second)
 	}
 }
 
