@@ -100,8 +100,8 @@ func (cc *CommandControl) Connect(target string) error {
 	return nil
 }
 
-func (cc *CommandControl) Send(ctx context.Context, tenantId string, deviceId string, command string, params *map[string]string) error {
-	data := make(map[string]string, 1)
+func (cc *CommandControl) Send(ctx context.Context, tenantId string, deviceId string, command string, params *map[string]interface{}) error {
+	data := make(map[string]interface{}, 1)
 	data["command"] = command
 	if params != nil {
 		for key, value := range *params {

@@ -67,7 +67,7 @@ func main() {
 	}
 	defer store.Close()
 
-	controller := controller.NewController(store, cc, 1800*time.Second, lowestSoilThreshold, tenantId)
+	controller := controller.NewTimeController(store, cc, 86400*time.Second, tenantId)
 
 	done := make(chan error)
 	go controller.Run(done)
