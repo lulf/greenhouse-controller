@@ -95,7 +95,7 @@ func (c *timeController) checkValues(done chan error) {
 
 func (c *timeController) waterPlants(deviceId string, done chan error) error {
 	params := make(map[string]interface{})
-	params["period"] = 4000
+	params["period"] = 3000
 	err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", &params)
 	if err != nil {
 		log.Println("Sending message to device", deviceId, err)
@@ -103,8 +103,6 @@ func (c *timeController) waterPlants(deviceId string, done chan error) error {
 	if err == io.EOF || err == amqp.ErrLinkClosed || err == amqp.ErrSessionClosed {
 		log.Println("Send error:", err)
 		done <- err
-	} else {
-		log.Println("Error sending command", err)
 	}
 	return err
 }
