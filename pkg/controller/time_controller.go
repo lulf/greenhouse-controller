@@ -95,7 +95,7 @@ func (c *timeController) checkValues(done chan error) {
 
 func (c *timeController) waterPlants(deviceId string, done chan error) error {
 	params := make(map[string]interface{})
-	params["period"] = 3000
+	params["period"] = 2500
 	err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", &params)
 	if err != nil {
 		log.Println("Sending message to device", deviceId, err)
