@@ -18,23 +18,23 @@ import (
 )
 
 type soilController struct {
-	store               *eventstore.EventStore
-	cc                  *commandcontrol.CommandControl
-	lowestSoilThreshold float64
-	tenantId            string
-	lastValue           map[string]float64
+	store                *eventstore.EventStore
+	cc                   *commandcontrol.CommandControl
+	highestSoilThreshold float64
+	tenantId             string
+	lastValue            map[string]float64
 
 	waitPeriod time.Duration
 }
 
-func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, lowestSoilThreshold float64, tenantId string) Controller {
+func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, highestSoilThreshold float64, tenantId string) Controller {
 	return &soilController{
-		store:               store,
-		cc:                  cc,
-		lowestSoilThreshold: lowestSoilThreshold,
-		tenantId:            tenantId,
-		waitPeriod:          waitPeriod,
-		lastValue:           make(map[string]float64),
+		store:                store,
+		cc:                   cc,
+		highestSoilThreshold: highestSoilThreshold,
+		tenantId:             tenantId,
+		waitPeriod:           waitPeriod,
+		lastValue:            make(map[string]float64),
 	}
 }
 
@@ -80,7 +80,7 @@ func (c *soilController) checkValues(done chan error) {
 	log.Println("Starting checkValues loop")
 	for {
 		for deviceId, value := range c.lastValue {
-			if value < c.lowestSoilThreshold {
+			if value > c.highestSoilThreshold {
 				// Water if any plant is below threshold
 				log.Println("Soil value is below threshold, watering", deviceId, value)
 				err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", nil)
