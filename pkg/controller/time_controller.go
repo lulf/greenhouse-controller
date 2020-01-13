@@ -76,14 +76,6 @@ func (c *timeController) checkValues(done chan error) {
 				if err != nil {
 					return
 				}
-
-				time.Sleep(10 * time.Second)
-
-				// Twice
-				err = c.waterPlants(deviceId, done)
-				if err != nil {
-					return
-				}
 				c.lastWatered[deviceId] = now
 			} else {
 				log.Println("Not watering plants", deviceId)
@@ -95,7 +87,7 @@ func (c *timeController) checkValues(done chan error) {
 
 func (c *timeController) waterPlants(deviceId string, done chan error) error {
 	params := make(map[string]interface{})
-	params["period"] = 2500
+	params["period"] = 3000
 	err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", &params)
 	if err != nil {
 		log.Println("Sending message to device", deviceId, err)
