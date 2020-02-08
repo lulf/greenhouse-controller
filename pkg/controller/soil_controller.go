@@ -8,7 +8,6 @@ import (
 	"context"
 	"io"
 	"log"
-	"math"
 	"time"
 
 	"github.com/lulf/greenhouse-controller/pkg/commandcontrol"
@@ -20,18 +19,18 @@ import (
 type soilController struct {
 	store                *eventstore.EventStore
 	cc                   *commandcontrol.CommandControl
-	highestSoilThreshold float64
+	lowHumidityThreshold float64
 	tenantId             string
 	lastValue            map[string]float64
 
 	waitPeriod time.Duration
 }
 
-func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, highestSoilThreshold float64, tenantId string) Controller {
+func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, lowHumidityThreshold float64, tenantId string) Controller {
 	return &soilController{
 		store:                store,
 		cc:                   cc,
-		highestSoilThreshold: highestSoilThreshold,
+		lowHumidityThreshold: lowHumidityThreshold,
 		tenantId:             tenantId,
 		waitPeriod:           waitPeriod,
 		lastValue:            make(map[string]float64),
@@ -40,7 +39,7 @@ func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandC
 
 func (c *soilController) Run(done chan error) {
 	go c.checkValues(done)
-	log.Println("Starting receive event loop")
+	log.Println("Starting receive event loop", c.waitPeriod, c.lowHumidityThreshold)
 	for {
 		if eventCtx, err := c.store.Receive(context.TODO()); err == nil {
 			c.handleEvent(eventCtx.Event)
@@ -59,19 +58,25 @@ func (c *soilController) Run(done chan error) {
 
 func (c *soilController) handleEvent(event *eventstore.Event) {
 	if soil, ok := event.Data["soil"]; ok {
-		smallest := math.MaxFloat64
-		found := false
-		for _, value := range soil.([]interface{}) {
-			fvalue := value.(float64)
-			log.Println("Comparing existing with new", smallest, fvalue)
-			if fvalue < smallest {
-				smallest = fvalue
-				found = true
+		soilData := soil.(map[string]interface{})
+		numSamples := soilData["numSamples"].(float64)
+		humidity := soilData["humidity"].([]interface{})
+		log.Println("Found soil data", numSamples, humidity)
+		if numSamples >= 100 {
+			found := false
+			var highest float64
+			for _, value := range humidity {
+				fvalue := value.(float64)
+				log.Println("Comparing existing with new", highest, fvalue)
+				if fvalue > highest {
+					highest = fvalue
+					found = true
+				}
 			}
-		}
-		if found {
-			c.lastValue[event.DeviceId] = smallest
-			log.Println("Updated last soil value", event.DeviceId, smallest)
+			if found {
+				c.lastValue[event.DeviceId] = highest
+				log.Println("Updated last soil value", event.DeviceId, numSamples, highest)
+			}
 		}
 	}
 }
@@ -80,10 +85,12 @@ func (c *soilController) checkValues(done chan error) {
 	log.Println("Starting checkValues loop")
 	for {
 		for deviceId, value := range c.lastValue {
-			if value > c.highestSoilThreshold {
+			if value < c.lowHumidityThreshold {
 				// Water if any plant is below threshold
 				log.Println("Soil value is below threshold, watering", deviceId, value)
-				err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", nil)
+				params := make(map[string]interface{})
+				params["period"] = 6000
+				err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", &params)
 				if err != nil {
 					log.Println("Sending message to device", deviceId, err)
 				}
@@ -91,13 +98,11 @@ func (c *soilController) checkValues(done chan error) {
 					log.Println("Send error:", err)
 					done <- err
 					break
-				} else {
-					log.Println("Error sending command", err)
 				}
 			} else {
 				log.Println("Soil value is above threshold, not watering", deviceId, value)
 			}
 		}
-		time.Sleep(c.waitPeriod)
+		time.Sleep(c.waitPeriod * time.Second)
 	}
 }

@@ -24,8 +24,9 @@ func main() {
 	var password string
 	var tlsEnabled bool
 	var cafile string
+
 	var waitPeriod int64
-	var highestSoilThreshold float64
+	var lowHumidityThreshold float64
 
 	flag.StringVar(&eventstoreAddr, "a", "amqp://127.0.0.1:5672", "Address of AMQP event store")
 	flag.StringVar(&controlAddr, "e", "messaging.bosch-iot-hub.com:5671", "Address of Eclipse Hono Command and Control endpoint")
@@ -34,7 +35,7 @@ func main() {
 	flag.BoolVar(&tlsEnabled, "s", false, "Enable TLS")
 	flag.StringVar(&cafile, "c", "", "Certificate CA file")
 	flag.Int64Var(&waitPeriod, "w", 3600, "Wait period between watering checks")
-	flag.Float64Var(&highestSoilThreshold, "h", 500, "Highest soil value before watering")
+	flag.Float64Var(&lowHumidityThreshold, "h", 0.0, "Lowest soil value before watering")
 
 	flag.Usage = func() {
 		fmt.Printf("Usage of %s:\n", os.Args[0])
@@ -67,7 +68,7 @@ func main() {
 	}
 	defer store.Close()
 
-	controller := controller.NewSoilController(store, cc, time.Duration(waitPeriod), highestSoilThreshold, tenantId)
+	controller := controller.NewSoilController(store, cc, time.Duration(waitPeriod), lowHumidityThreshold, tenantId)
 
 	done := make(chan error)
 	go controller.Run(done)
