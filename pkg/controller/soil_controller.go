@@ -22,11 +22,12 @@ type soilController struct {
 	lowHumidityThreshold float64
 	tenantId             string
 	lastValue            map[string]float64
+	waterPeriod          time.Duration
 
 	waitPeriod time.Duration
 }
 
-func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, lowHumidityThreshold float64, tenantId string) Controller {
+func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandControl, waitPeriod time.Duration, lowHumidityThreshold float64, tenantId string, waterPeriod time.Duration) Controller {
 	return &soilController{
 		store:                store,
 		cc:                   cc,
@@ -34,12 +35,13 @@ func NewSoilController(store *eventstore.EventStore, cc *commandcontrol.CommandC
 		tenantId:             tenantId,
 		waitPeriod:           waitPeriod,
 		lastValue:            make(map[string]float64),
+		waterPeriod:          waterPeriod,
 	}
 }
 
 func (c *soilController) Run(done chan error) {
 	go c.checkValues(done)
-	log.Println("Starting receive event loop", c.waitPeriod, c.lowHumidityThreshold)
+	log.Println("Starting receive event loop", c.waitPeriod, c.lowHumidityThreshold, c.waterPeriod)
 	for {
 		if eventCtx, err := c.store.Receive(context.TODO()); err == nil {
 			c.handleEvent(eventCtx.Event)
@@ -89,7 +91,7 @@ func (c *soilController) checkValues(done chan error) {
 				// Water if any plant is below threshold
 				log.Println("Soil value is below threshold, watering", deviceId, value)
 				params := make(map[string]interface{})
-				params["period"] = 6000
+				params["period"] = c.waterPeriod * time.Millisecond
 				err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", &params)
 				if err != nil {
 					log.Println("Sending message to device", deviceId, err)

@@ -26,6 +26,7 @@ func main() {
 	var cafile string
 
 	var waitPeriod int64
+	var waterPeriod int64
 	var lowHumidityThreshold float64
 
 	flag.StringVar(&eventstoreAddr, "a", "amqp://127.0.0.1:5672", "Address of AMQP event store")
@@ -36,6 +37,7 @@ func main() {
 	flag.StringVar(&cafile, "c", "", "Certificate CA file")
 	flag.Int64Var(&waitPeriod, "w", 3600, "Wait period between watering checks")
 	flag.Float64Var(&lowHumidityThreshold, "h", 0.0, "Lowest soil value before watering")
+	flag.Int64Var(&waterPeriod, "r", 6000, "Pump water period")
 
 	flag.Usage = func() {
 		fmt.Printf("Usage of %s:\n", os.Args[0])
@@ -54,12 +56,7 @@ func main() {
 	}
 
 	username := fmt.Sprintf("messaging@%s", tenantId)
-	cc := commandcontrol.NewCommandControl(controlAddr, username, password, tlsEnabled, ca)
-	err = cc.Connect(fmt.Sprintf("command/%s", tenantId))
-	if err != nil {
-		log.Fatal("Connecting to messaging endpoint:", err)
-	}
-	defer cc.Close()
+	cc := commandcontrol.NewCommandControl(controlAddr, username, password, tlsEnabled, ca, fmt.Sprintf("command/%s", tenantId))
 
 	store := eventstore.NewEventStore(eventstoreAddr)
 	err = store.Connect("events")
@@ -68,7 +65,7 @@ func main() {
 	}
 	defer store.Close()
 
-	controller := controller.NewSoilController(store, cc, time.Duration(waitPeriod), lowHumidityThreshold, tenantId)
+	controller := controller.NewSoilController(store, cc, time.Duration(waitPeriod), lowHumidityThreshold, tenantId, time.Duration(waterPeriod))
 
 	done := make(chan error)
 	go controller.Run(done)
