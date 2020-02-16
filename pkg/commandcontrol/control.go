@@ -44,18 +44,19 @@ func (cc *CommandControl) Send(ctx context.Context, tenantId string, deviceId st
 			certPool.AppendCertsFromPEM(cc.caPem)
 		}
 		config := tls.Config{RootCAs: certPool}
-		tlsConn, err := tls.Dial("tcp", cc.address, &config)
+		tlsConn, err := tls.Dial("tcp", cc.url, &config)
 		if err != nil {
 			return err
 		}
 		connection = tlsConn
 	} else {
-		tcpConn, err := net.Dial("tcp", cc.address)
+		tcpConn, err := net.Dial("tcp", cc.url)
 		if err != nil {
 			return err
 		}
 		connection = tcpConn
 	}
+	defer connection.Close()
 
 	opts := []amqp.ConnOption{
 		amqp.ConnContainerID("greenhouse-controller"),
@@ -68,6 +69,7 @@ func (cc *CommandControl) Send(ctx context.Context, tenantId string, deviceId st
 	if err != nil {
 		return err
 	}
+	defer amqpClient.Close()
 
 	session, err := amqpClient.NewSession()
 	if err != nil {
@@ -95,6 +97,6 @@ func (cc *CommandControl) Send(ctx context.Context, tenantId string, deviceId st
 	message.Properties = &amqp.MessageProperties{}
 	message.Properties.To = fmt.Sprintf("command/%s/%s", tenantId, deviceId)
 	message.Properties.Subject = command
-	log.Println("Sending message", message)
+	log.Println("Sending message", data)
 	return sender.Send(ctx, message)
 }

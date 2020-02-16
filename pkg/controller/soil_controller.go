@@ -91,7 +91,7 @@ func (c *soilController) checkValues(done chan error) {
 				// Water if any plant is below threshold
 				log.Println("Soil value is below threshold, watering", deviceId, value)
 				params := make(map[string]interface{})
-				params["period"] = c.waterPeriod * time.Millisecond
+				params["period"] = int64(c.waterPeriod / time.Nanosecond)
 				err := c.cc.Send(context.TODO(), c.tenantId, deviceId, "water", &params)
 				if err != nil {
 					log.Println("Sending message to device", deviceId, err)
